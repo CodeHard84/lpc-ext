@@ -2435,9 +2435,9 @@ bool ClangObject::emit(char *base, int flags)
 # ifndef WIN32
 	    "clang -fPIC"
 # elif defined(_M_IX86)
-	    "\"\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe\"\""
+	    "\"\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\bin\\clang.exe\"\""
 # else
-	    "\"\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe\"\""
+	    "\"\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\Llvm\\x64\\bin\\clang.exe\"\""
 # endif
 # ifndef LLVM3_6
 	    " -march=native"

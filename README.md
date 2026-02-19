@@ -46,7 +46,7 @@ On Windows, there are different solution files for the components of the JIT
 compiler.  `lpc-ext.sln` is used to build the JIT extension, `jitcomp.sln` is
 used to build the actual jit compiler which runs as a separate program, and
 which depends on clang.  Clang can be installed as a component of Visual Studio
-Community 2022.  Note that jitcomp.sln is a VS2019 solution, whereas
+Community 2026.  Note that jitcomp.sln is a VS2019 solution, whereas
 `lpc-ext.sln` can be built with any Visual Studio version from 2010 onward.
 
 Use `make crypto` to build the cryptographic functions module. This requires
