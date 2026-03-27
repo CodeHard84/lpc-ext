@@ -275,7 +275,13 @@ static const struct {
     { Double, "(i8*, " Double ")" },
 # define VM_TANH			115
     { Double, "(i8*, " Double ")" },
-# define VM_FUNCTIONS			116
+# define VM_ISINF			116
+    { Int, "(i8*, " Double ")" },
+# define VM_ISNAN			117
+    { Int, "(i8*, " Double ")" },
+# define VM_ISFINITE			118
+    { Int, "(i8*, " Double ")" },
+# define VM_FUNCTIONS			119
 };
 
 class GenContext : public FlowContext {
@@ -1879,6 +1885,24 @@ void ClangCode::emit(GenContext *context)
 	case KF_TANH:
 	    context->updateLine(line);
 	    context->callArgs(VM_TANH, tmpRef(sp));
+	    fprintf(context->stream, Double " %s)\n", tmpRef(context->sp));
+	    pushResult(context);
+	    return;
+
+	case KF_ISINF:
+	    context->callArgs(VM_ISINF, tmpRef(sp));
+	    fprintf(context->stream, Double " %s)\n", tmpRef(context->sp));
+	    pushResult(context);
+	    return;
+
+	case KF_ISNAN:
+	    context->callArgs(VM_ISNAN, tmpRef(sp));
+	    fprintf(context->stream, Double " %s)\n", tmpRef(context->sp));
+	    pushResult(context);
+	    return;
+
+	case KF_ISFINITE:
+	    context->callArgs(VM_ISFINITE, tmpRef(sp));
 	    fprintf(context->stream, Double " %s)\n", tmpRef(context->sp));
 	    pushResult(context);
 	    return;

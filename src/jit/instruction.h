@@ -210,6 +210,9 @@
 # define KF_RANGEFT_STR		114
 # define KF_RANGEF_STR		115
 # define KF_RANGET_STR		116
+# define KF_ISINF		117
+# define KF_ISNAN		118
+# define KF_ISFINITE		119
 
 # define KF_BUILTINS		128
 

@@ -574,6 +574,9 @@ Type TypedCode::offStack(TypedContext *context, StackSize stackPointer)
 	case KF_COSH:
 	case KF_SINH:
 	case KF_TANH:
+	case KF_ISINF:
+	case KF_ISNAN:
+	case KF_ISFINITE:
 	    return LPC_TYPE_FLOAT;
 
 	case KF_TOFLOAT:

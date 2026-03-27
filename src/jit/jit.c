@@ -373,10 +373,10 @@ static void jit_finish(void)
  * NAME:	JIT->compile()
  * DESCRIPTION:	JIT compile an object
  */
-static void jit_compile(uint64_t index, uint64_t instance, int nInherits,
-			uint8_t *prog, size_t progSize, int nFunctions,
-			uint8_t *funcTypes, size_t fTypeSize, uint8_t *varTypes,
-			size_t vTypeSize)
+static void jit_compile(uint64_t index, uint64_t instance, int fl,
+			int nInherits, uint8_t *prog, size_t progSize,
+			int nFunctions, uint8_t *funcTypes, size_t fTypeSize,
+			uint8_t *varTypes, size_t vTypeSize)
 {
     size_t size;
     JitCompile *comp;
@@ -394,7 +394,7 @@ static void jit_compile(uint64_t index, uint64_t instance, int nInherits,
 	p = buffer;
 	comp = (JitCompile *) p;
 	memset(comp, '\0', sizeof(JitCompile));
-	comp->flags = flags;
+	comp->flags = flags | fl;
 	comp->intInheritSize = intInheritSize;
 	comp->nInherits = nInherits;
 	comp->nFunctions = nFunctions;

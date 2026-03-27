@@ -22,3 +22,4 @@ typedef struct {
 /* flags */
 # define JIT_TYPECHECKING	0x0f	/* typechecking mode */
 # define JIT_NOREF		0x10	/* no reference counting */
+# define JIT_PUREFLOAT		0x20	/* pure floating point program */
