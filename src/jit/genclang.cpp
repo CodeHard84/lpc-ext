@@ -334,11 +334,17 @@ public:
 	    l1 = l2 = 0;
 	} else {
 	    sign = (d < 0.0);
-	    d = frexpl(fabsl(d), &e);
-	    e += 0x3ffe;
-	    d = ldexpl(d, 32);
-	    l1 = (uint32_t) d;
-	    l2 = (uint32_t) ldexpl(modfl(d, &d), 32);
+	    if (isfinite(d)) {
+		d = frexpl(fabsl(d), &e);
+		e += 0x3ffe;
+		d = ldexpl(d, 32);
+		l1 = (uint32_t) d;
+		l2 = (uint32_t) ldexpl(modfl(d, &d), 32);
+	    } else {
+		e = 0x7fff;
+		l1 = (isnan(d)) ? 0xc0000000 : 0x80000000;
+		l2 = 0;
+	    }
 	}
 	sprintf(buf, "0xK%04x%08lx%08lx", (sign << 15) + e, (unsigned long) l1,
 		(unsigned long) l2);
@@ -351,9 +357,14 @@ public:
 	    l = 0;
 	} else {
 	    sign = (d < 0.0);
-	    d = frexpl(fabsl(d), &e);
-	    e += 0x3fe;
-	    l = ((unsigned long long) ldexpl(d, 53)) & 0x000fffffffffffffLL;
+	    if (isfinite(d)) {
+		d = frexpl(fabsl(d), &e);
+		e += 0x3fe;
+		l = ((unsigned long long) ldexpl(d, 53)) & 0x000fffffffffffffLL;
+	    } else {
+		e = 0x7ff;
+		l = (isnan(d)) ? 0x80000000 : 0;
+	    }
 	}
 	sprintf(buf, "0x%03x%013llx", (sign << 11) + e, l);
 # endif
@@ -829,8 +840,12 @@ void ClangCode::emit(GenContext *context)
 	if ((flt.high | flt.low) == 0) {
 	    d = 0.0;
 	} else {
-	    d = ldexpl((long double) (0x10000 | (flt.high & 0xffff)), 64);
-	    d = ldexpl(d + flt.low, ((flt.high >> 16) & 0x7fff) - 0x404f);
+	    if ((flt.high & 0x7fff0000) != 0x7fff0000) {
+		d = ldexpl((long double) (0x10000 | (flt.high & 0xffff)), 64);
+		d = ldexpl(d + flt.low, ((flt.high >> 16) & 0x7fff) - 0x404f);
+	    } else {
+		d = ((flt.high & 0xffff) | flt.low) ? 0.0 / 0.0 : 1.0 / 0.0;
+	    }
 	    if (flt.high & 0x80000000) {
 		d = -d;
 	    }

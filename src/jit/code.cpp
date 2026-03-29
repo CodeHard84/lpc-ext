@@ -559,7 +559,8 @@ Code::Code(CodeFunction *function)
 	    flt.high = 0;
 	    flt.low = 0;
 	} else {
-	    flt.high = (((xfloat.high & 0x8000) + fexp + 0x3c00) << 16) +
+	    fexp = (fexp != 0x7ff) ? fexp + 0x3c00 : 0x7fff;
+	    flt.high = (((xfloat.high & 0x8000) + fexp) << 16) +
 		       ((xfloat.high & 0xf) << 12) +
 		       (uint32_t) (xfloat.low >> 20);
 	    flt.low = xfloat.low << 44;
