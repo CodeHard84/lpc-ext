@@ -52,5 +52,9 @@ Community 2026.  Note that jitcomp.sln is a VS2019 solution, whereas
 Use `make crypto` to build the cryptographic functions module. This requires
 OpenSSL 1.1.1 or later.
 
+The crypto module also provides fixed-policy scrypt password hashing and
+verification. See `doc/passwords.md` for the encoded format, resource limits,
+and security properties.
+
 Use `make tls` to build the TLS module (for DGD only).  This also requires
 OpenSSL 1.1.1 or later.
