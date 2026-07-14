@@ -5,6 +5,7 @@
  */
 
 # include <openssl/evp.h>
+# include <openssl/crypto.h>
 # include <openssl/rand.h>
 # include <openssl/x509v3.h>
 # include <openssl/x509_vfy.h>
@@ -21,6 +22,84 @@ static const EVP_MD *md_md5, *md_sha1, *md_sha224, *md_sha256, *md_sha384,
 		    *md_sha3_512, *md_keccak256;
 static const EVP_CIPHER *cipher_aes_128_gcm, *cipher_aes_256_gcm,
 			*cipher_chacha20_poly1305, *cipher_aes_128_ccm;
+
+# define PASSWORD_PREFIX	"$EL2$scrypt$32768$8$1$"
+# define PASSWORD_PREFIX_LENGTH	22
+# define PASSWORD_SALT_LENGTH	16
+# define PASSWORD_KEY_LENGTH	32
+# define PASSWORD_RECORD_LENGTH	119
+# define PASSWORD_MAX_LENGTH	128
+# define PASSWORD_SCRYPT_N	32768
+# define PASSWORD_SCRYPT_R	8
+# define PASSWORD_SCRYPT_P	1
+# define PASSWORD_SCRYPT_MAXMEM	(64ULL * 1024 * 1024)
+
+static const char hex_digits[] = "0123456789abcdef";
+
+/*
+ * decode one lowercase hexadecimal digit
+ */
+static int hex_value(char digit)
+{
+    if (digit >= '0' && digit <= '9') {
+	return digit - '0';
+    }
+    if (digit >= 'a' && digit <= 'f') {
+	return digit - 'a' + 10;
+    }
+    return -1;
+}
+
+/*
+ * decode one fixed-size lowercase hexadecimal field
+ */
+static int decode_hex(const char *encoded, unsigned char *decoded, int size)
+{
+    int high, i, low;
+
+    for (i = 0; i < size; i++) {
+	high = hex_value(encoded[2 * i]);
+	low = hex_value(encoded[2 * i + 1]);
+	if (high < 0 || low < 0) {
+	    return 0;
+	}
+	decoded[i] = (high << 4) | low;
+    }
+    return 1;
+}
+
+/*
+ * parse the one supported password record without running scrypt
+ */
+static int decode_password_record(const char *encoded, int length,
+				  unsigned char *salt,
+				  unsigned char *derived)
+{
+    if (length != PASSWORD_RECORD_LENGTH ||
+	memcmp(encoded, PASSWORD_PREFIX, PASSWORD_PREFIX_LENGTH) != 0 ||
+	encoded[PASSWORD_PREFIX_LENGTH + 2 * PASSWORD_SALT_LENGTH] != '$' ||
+	!decode_hex(encoded + PASSWORD_PREFIX_LENGTH, salt,
+		    PASSWORD_SALT_LENGTH) ||
+	!decode_hex(encoded + PASSWORD_PREFIX_LENGTH +
+		    2 * PASSWORD_SALT_LENGTH + 1, derived,
+		    PASSWORD_KEY_LENGTH)) {
+	return 0;
+    }
+    return 1;
+}
+
+/*
+ * encode one fixed-size byte string as lowercase hexadecimal
+ */
+static void encode_hex(char *encoded, const unsigned char *value, int size)
+{
+    int i;
+
+    for (i = 0; i < size; i++) {
+	encoded[2 * i] = hex_digits[value[i] >> 4];
+	encoded[2 * i + 1] = hex_digits[value[i] & 0x0f];
+    }
+}
 
 /*
  * hash a string
@@ -248,6 +327,132 @@ static void secure_random(LPC_frame f, int nargs, LPC_value retval)
 
     str = lpc_string_new(lpc_frame_dataspace(f), buffer, n);
     lpc_string_putval(retval, str);
+}
+
+/*
+ * encoded = password_hash(password)
+ */
+static void password_hash(LPC_frame f, int nargs, LPC_value retval)
+{
+    unsigned char derived[PASSWORD_KEY_LENGTH];
+    unsigned char salt[PASSWORD_SALT_LENGTH];
+    char encoded[PASSWORD_RECORD_LENGTH];
+    LPC_string password, result;
+    int length;
+
+    if (nargs != 1) {
+	lpc_runtime_error(f, "Wrong number of arguments for kfun password_hash");
+    }
+    if (lpc_value_type(lpc_frame_arg(f, nargs, 0)) != LPC_TYPE_STRING) {
+	lpc_runtime_error(f, "Bad argument for kfun password_hash");
+    }
+    password = lpc_string_getval(lpc_frame_arg(f, nargs, 0));
+    length = lpc_string_length(password);
+    if (length <= 0 || length > PASSWORD_MAX_LENGTH) {
+	lpc_runtime_error(f, "Invalid password length");
+    }
+
+    lpc_runtime_check(f, 4096 + 3 * length);
+    ERR_clear_error();
+    if (RAND_bytes(salt, sizeof(salt)) <= 0 ||
+	EVP_PBE_scrypt(lpc_string_text(password), length, salt, sizeof(salt),
+		       PASSWORD_SCRYPT_N, PASSWORD_SCRYPT_R,
+		       PASSWORD_SCRYPT_P, PASSWORD_SCRYPT_MAXMEM,
+		       derived, sizeof(derived)) <= 0) {
+	ERR_clear_error();
+	OPENSSL_cleanse(derived, sizeof(derived));
+	OPENSSL_cleanse(salt, sizeof(salt));
+	lpc_runtime_error(f, "Password hashing failed");
+    }
+
+    memcpy(encoded, PASSWORD_PREFIX, PASSWORD_PREFIX_LENGTH);
+    encode_hex(encoded + PASSWORD_PREFIX_LENGTH, salt, sizeof(salt));
+    encoded[PASSWORD_PREFIX_LENGTH + 2 * PASSWORD_SALT_LENGTH] = '$';
+    encode_hex(encoded + PASSWORD_PREFIX_LENGTH +
+	       2 * PASSWORD_SALT_LENGTH + 1, derived, sizeof(derived));
+    result = lpc_string_new(lpc_frame_dataspace(f), encoded, sizeof(encoded));
+    lpc_string_putval(retval, result);
+
+    OPENSSL_cleanse(encoded, sizeof(encoded));
+    OPENSSL_cleanse(derived, sizeof(derived));
+    OPENSSL_cleanse(salt, sizeof(salt));
+    ERR_clear_error();
+}
+
+/*
+ * valid = password_hash_valid(encoded)
+ */
+static void password_hash_valid(LPC_frame f, int nargs, LPC_value retval)
+{
+    unsigned char derived[PASSWORD_KEY_LENGTH];
+    unsigned char salt[PASSWORD_SALT_LENGTH];
+    LPC_string encoded;
+    int valid;
+
+    if (nargs != 1) {
+	lpc_runtime_error(f,
+			  "Wrong number of arguments for kfun password_hash_valid");
+    }
+    if (lpc_value_type(lpc_frame_arg(f, nargs, 0)) != LPC_TYPE_STRING) {
+	lpc_runtime_error(f, "Bad argument for kfun password_hash_valid");
+    }
+    encoded = lpc_string_getval(lpc_frame_arg(f, nargs, 0));
+    valid = decode_password_record(lpc_string_text(encoded),
+				   lpc_string_length(encoded), salt, derived);
+    OPENSSL_cleanse(derived, sizeof(derived));
+    OPENSSL_cleanse(salt, sizeof(salt));
+    lpc_int_putval(retval, valid);
+}
+
+/*
+ * valid = password_verify(password, encoded)
+ */
+static void password_verify(LPC_frame f, int nargs, LPC_value retval)
+{
+    unsigned char actual[PASSWORD_KEY_LENGTH];
+    unsigned char expected[PASSWORD_KEY_LENGTH];
+    unsigned char salt[PASSWORD_SALT_LENGTH];
+    LPC_string encoded, password;
+    int length, valid;
+
+    if (nargs != 2) {
+	lpc_runtime_error(f, "Wrong number of arguments for kfun password_verify");
+    }
+    if (lpc_value_type(lpc_frame_arg(f, nargs, 0)) != LPC_TYPE_STRING ||
+	lpc_value_type(lpc_frame_arg(f, nargs, 1)) != LPC_TYPE_STRING) {
+	lpc_runtime_error(f, "Bad argument for kfun password_verify");
+    }
+    password = lpc_string_getval(lpc_frame_arg(f, nargs, 0));
+    length = lpc_string_length(password);
+    encoded = lpc_string_getval(lpc_frame_arg(f, nargs, 1));
+    if (length <= 0 || length > PASSWORD_MAX_LENGTH ||
+	!decode_password_record(lpc_string_text(encoded),
+				lpc_string_length(encoded), salt, expected)) {
+	OPENSSL_cleanse(expected, sizeof(expected));
+	OPENSSL_cleanse(salt, sizeof(salt));
+	lpc_int_putval(retval, 0);
+	return;
+    }
+
+    lpc_runtime_check(f, 4096 + 3 * length);
+    ERR_clear_error();
+    if (EVP_PBE_scrypt(lpc_string_text(password), length, salt, sizeof(salt),
+		       PASSWORD_SCRYPT_N, PASSWORD_SCRYPT_R,
+		       PASSWORD_SCRYPT_P, PASSWORD_SCRYPT_MAXMEM,
+		       actual, sizeof(actual)) <= 0) {
+	ERR_clear_error();
+	OPENSSL_cleanse(actual, sizeof(actual));
+	OPENSSL_cleanse(expected, sizeof(expected));
+	OPENSSL_cleanse(salt, sizeof(salt));
+	lpc_runtime_error(f, "Password verification failed");
+    }
+
+    valid = CRYPTO_memcmp(actual, expected, sizeof(actual)) == 0;
+    OPENSSL_cleanse(actual, sizeof(actual));
+    OPENSSL_cleanse(expected, sizeof(expected));
+    OPENSSL_cleanse(salt, sizeof(salt));
+    ERR_clear_error();
+    lpc_int_putval(retval, valid);
 }
 
 /*
@@ -1751,6 +1956,10 @@ static void ed448_verify(LPC_frame f, int nargs, LPC_value retval)
 static char hash_proto[] = { LPC_TYPE_STRING, LPC_TYPE_STRING, LPC_TYPE_STRING,
 			     LPC_TYPE_ELLIPSIS, 0 };
 static char secure_random_proto[] = { LPC_TYPE_STRING, LPC_TYPE_INT, 0 };
+static char password_hash_proto[] = { LPC_TYPE_STRING, LPC_TYPE_STRING, 0 };
+static char password_verify_proto[] = { LPC_TYPE_INT, LPC_TYPE_STRING,
+				LPC_TYPE_STRING, 0 };
+static char password_hash_valid_proto[] = { LPC_TYPE_INT, LPC_TYPE_STRING, 0 };
 static char verify_proto[] = { LPC_TYPE_STRING, LPC_TYPE_STRING,
 			       LPC_TYPE_STRING, LPC_TYPE_STRING,
 			       LPC_TYPE_ELLIPSIS, 0 };
@@ -1781,6 +1990,10 @@ static LPC_ext_kfun kf[] = {
     { "hash SHA3-384", hash_proto, &sha3_384 },
     { "hash SHA3-512", hash_proto, &sha3_512 },
     { "secure_random", secure_random_proto, &secure_random },
+    { "password_hash", password_hash_proto, &password_hash },
+    { "password_verify", password_verify_proto, &password_verify },
+    { "password_hash_valid", password_hash_valid_proto,
+	&password_hash_valid },
     { "verify_certificate", verify_proto, &verify_certificate },
     { "mask_xor", mask_xor_proto, mask_xor },
     { "encrypt AES-128-GCM", cipher_proto, &encrypt_aes_128_gcm },
