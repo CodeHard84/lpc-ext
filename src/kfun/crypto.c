@@ -334,9 +334,9 @@ static void secure_random(LPC_frame f, int nargs, LPC_value retval)
  */
 static void password_hash(LPC_frame f, int nargs, LPC_value retval)
 {
-    unsigned char derived[PASSWORD_KEY_LENGTH];
-    unsigned char salt[PASSWORD_SALT_LENGTH];
-    char encoded[PASSWORD_RECORD_LENGTH];
+    unsigned char derived[PASSWORD_KEY_LENGTH] = { 0 };
+    unsigned char salt[PASSWORD_SALT_LENGTH] = { 0 };
+    char *encoded;
     LPC_string password, result;
     int length;
 
@@ -353,6 +353,9 @@ static void password_hash(LPC_frame f, int nargs, LPC_value retval)
     }
 
     lpc_runtime_check(f, 4096 + 3 * length);
+    result = lpc_string_new(lpc_frame_dataspace(f), NULL,
+			    PASSWORD_RECORD_LENGTH);
+    encoded = lpc_string_text(result);
     ERR_clear_error();
     if (RAND_bytes(salt, sizeof(salt)) <= 0 ||
 	EVP_PBE_scrypt(lpc_string_text(password), length, salt, sizeof(salt),
@@ -370,13 +373,10 @@ static void password_hash(LPC_frame f, int nargs, LPC_value retval)
     encoded[PASSWORD_PREFIX_LENGTH + 2 * PASSWORD_SALT_LENGTH] = '$';
     encode_hex(encoded + PASSWORD_PREFIX_LENGTH +
 	       2 * PASSWORD_SALT_LENGTH + 1, derived, sizeof(derived));
-    result = lpc_string_new(lpc_frame_dataspace(f), encoded, sizeof(encoded));
-    lpc_string_putval(retval, result);
-
-    OPENSSL_cleanse(encoded, sizeof(encoded));
     OPENSSL_cleanse(derived, sizeof(derived));
     OPENSSL_cleanse(salt, sizeof(salt));
     ERR_clear_error();
+    lpc_string_putval(retval, result);
 }
 
 /*
@@ -384,8 +384,8 @@ static void password_hash(LPC_frame f, int nargs, LPC_value retval)
  */
 static void password_hash_valid(LPC_frame f, int nargs, LPC_value retval)
 {
-    unsigned char derived[PASSWORD_KEY_LENGTH];
-    unsigned char salt[PASSWORD_SALT_LENGTH];
+    unsigned char derived[PASSWORD_KEY_LENGTH] = { 0 };
+    unsigned char salt[PASSWORD_SALT_LENGTH] = { 0 };
     LPC_string encoded;
     int valid;
 
@@ -409,9 +409,9 @@ static void password_hash_valid(LPC_frame f, int nargs, LPC_value retval)
  */
 static void password_verify(LPC_frame f, int nargs, LPC_value retval)
 {
-    unsigned char actual[PASSWORD_KEY_LENGTH];
-    unsigned char expected[PASSWORD_KEY_LENGTH];
-    unsigned char salt[PASSWORD_SALT_LENGTH];
+    unsigned char actual[PASSWORD_KEY_LENGTH] = { 0 };
+    unsigned char expected[PASSWORD_KEY_LENGTH] = { 0 };
+    unsigned char salt[PASSWORD_SALT_LENGTH] = { 0 };
     LPC_string encoded, password;
     int length, valid;
 
